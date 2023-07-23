@@ -12,7 +12,7 @@ void write_negative_cycle();
 int read_polarity();
 void read_bit(int bit);
 
-int bit_register = 0;
+long bit_register = 0;
 int is_bit_sync = 0;
 int is_header_accepted = 0;
 int ready_to_read_byte = 0;

@@ -160,7 +160,7 @@ void write_byte_as_pcm(int byte)
     write_bit_as_pcm(1);
     for(int i = 0; i < 8; i++)
     {
-        write_bit_as_pcm(byte >> i & 0x01);
+        write_bit_as_pcm((byte >> (7-i)) & 0x01);
     }
     write_bit_as_pcm(0);
 }
@@ -337,12 +337,10 @@ int read_polarity()
 
 void read_bit(int bit) 
 {
-    // A bit just came in, 0 or 1. 
+    // A bit just came in, 0 or 1.
     // Shunt it on to the register, and keep it in the 1024 range. 
     // This lets us read the bit register as a short.
-    bit_register = ((bit_register << 1) & 0x3FF) | (bit);
-    printf("%#04x\n", bit_register);
-    printf("%#02x\n", ((bit_register >> 1) & 0xFF));
+    bit_register = ((bit_register << 1) | (bit)) & 0x3FF;
     
     // We need to determine a few things here. 
     if(!is_bit_sync) 
@@ -390,7 +388,6 @@ void read_bit(int bit)
                 // push the current byte on to the header register and check for our header!
                 int nextByte = ((bit_register >> 1) & 0xFF);
                 header_register = ((header_register << 8) | nextByte) & 0xFFFFFFFF;
-                printf("-----------------%#02x----%#08x\n", nextByte, header_register);
                 // If header register matches header... we did it! Sync complete.
                 if(header_register == 0x04200609) 
                 {
