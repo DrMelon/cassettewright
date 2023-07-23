@@ -19,8 +19,8 @@ static const char *const usages[] =
 int main(int argc, const char **argv)
 {
         int writemode = 0;
-        int readmode = 0; 
-
+        int readmode = 0;
+        int documode = 0;
 
         struct argparse_option options[] = 
         {
@@ -28,6 +28,8 @@ int main(int argc, const char **argv)
             OPT_GROUP("Mode Options"),
             OPT_BOOLEAN('w', "write", &writemode, "write data to tape format", NULL, 0, 0),
             OPT_BOOLEAN('r', "read", &readmode, "read data from tape format", NULL, 0, 0),
+            OPT_BOOLEAN('d', "documentation", &documode, "print documentation about the format", NULL, 0, 0),
+            OPT_END()
         };
 
         struct argparse argparse;
@@ -49,7 +51,7 @@ int main(int argc, const char **argv)
                 // 2. Write lead-in pattern.
                 write_lead_in();
                 // 3. Write header.
-                write_header();
+                write_header(); 
 
                 // 4. Write data. 
                 // Reading STDIN until EOF. 
@@ -61,6 +63,20 @@ int main(int argc, const char **argv)
         }
         else if (readmode)
         {
+        }
+        else if (documode) 
+        {
+                printf("\nCassettewright Format Information");
+                printf("\nExpressed as Signed 16-bit PCM (Endianness Machine-Dependent)");
+                printf("\nCycle: 16 PCM samples.");
+                printf("\n\tBits: 1 expressed as 2 positive cycles, 2 negative cycles.");
+                printf("\n\t      0 expressed as 1 positice cycle, 1 negative cycle.");
+                printf("\n\tBytes: Preceded by a 1 bit, followed by a 0 bit.");
+                printf("\n\tPolarity Sync Pattern: 200 repeats of positive-negative-negative-negative cycles.");
+                printf("\n\tHeader:");
+                printf("\n\t* Lead-in; 16 bytes of 0xFF");
+                printf("\n\t* Header; 0x0A 0x0C 0x0A 0x0B 0x06 0x09");
+                printf("\n");
         }
         else
         {
