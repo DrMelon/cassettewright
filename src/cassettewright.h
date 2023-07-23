@@ -9,7 +9,16 @@ void write_byte_as_pcm(int byte);
 void write_positive_cycle();
 void write_negative_cycle();
 
-void read_pcm_sample(int pcm_sample);
+int read_polarity();
+void read_bit(int bit);
+
+int bit_register = 0;
+int is_bit_sync = 0;
+int is_header_accepted = 0;
+int ready_to_read_byte = 0;
+int bit_per_byte_count = 0;
+int header_register = 0;
+
 
 #define PCM_SAMPLES_PER_BIT 16
 #define POLARITY_SYNC_PATTERN_NUM_POS 1

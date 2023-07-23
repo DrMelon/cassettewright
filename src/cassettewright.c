@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
+#include <stdbool.h>
 #include "../argparse/argparse.h"
 
 #include "cassettewright.h"
@@ -74,7 +75,38 @@ int main(int argc, const char **argv)
                 // 5. Start consuming stdin packets and building up whole bytes, inverting if polarity is inverted
                 //    a. Remember! Need to read zero-crossings; if the current sample and previous sample's sign don't match, it happened.
                 // 6. Read lead-in and header - evaluate buffer until header match acquired.
-                // 7. Once header match acquired, we can safely read whole bytes out to stdout. 
+                // 7. Once header match acquired, we can safely read whole bytes out to stdout.
+                
+                short polarity = read_polarity();
+                
+                // Now we can read data.
+                short previous_sample = 0;
+                int current_length = 0;
+                short current_sample = 0;
+
+                is_header_accepted = 0;
+                header_register = 0;
+                is_bit_sync = 0;
+                bit_register = 0;
+
+                // Read samples in 2 bytes at a time.
+                while(fread(&current_sample, 2, 1, stdin) == 1) 
+                {
+                    current_sample *= polarity;
+                    current_length += 1;
+
+                    // Is this a zero-crossing *at the point of positive-to-negative change*? 
+                    if(previous_sample > 0 && current_sample <= 0)  
+                    {
+                        // Remember: 1s are 2 cycles long, 0s are 1 cycle long.
+                        int bit_is_one = (current_length > PCM_SAMPLES_PER_BIT * 2);
+                        read_bit(bit_is_one);
+                        current_length = 0;
+                    }
+
+                    previous_sample = current_sample;
+                }
+
         }
         else if (documode) 
         {
@@ -117,10 +149,8 @@ void write_lead_in()
 
 void write_header()
 {
-    write_byte_as_pcm(0x0A);
-    write_byte_as_pcm(0x0C);
-    write_byte_as_pcm(0x0A); 
-    write_byte_as_pcm(0x0B);
+    write_byte_as_pcm(0x04);
+    write_byte_as_pcm(0x20);
     write_byte_as_pcm(0x06);
     write_byte_as_pcm(0x09);
 }
@@ -128,9 +158,9 @@ void write_header()
 void write_byte_as_pcm(int byte) 
 {
     write_bit_as_pcm(1);
-    for(int i = 0; i < 7; i++)
+    for(int i = 0; i < 8; i++)
     {
-        write_bit_as_pcm(byte >> i & 0b00000001);
+        write_bit_as_pcm(byte >> i & 0x01);
     }
     write_bit_as_pcm(0);
 }
@@ -154,7 +184,7 @@ void write_positive_cycle(int num)
 {
     for(int posCount = 0; posCount < PCM_SAMPLES_PER_BIT * num; posCount++)
     {
-        int posWrite = 0x7FFF;
+        short posWrite = 0x7FFF;
         write(1, &posWrite, 2);
     }
 }
@@ -163,7 +193,210 @@ void write_negative_cycle(int num)
 {
     for(int negCount = 0; negCount < PCM_SAMPLES_PER_BIT * num; negCount++) 
     {
-        int negWrite = -0x7FFF;
+        short negWrite = -0x7FFF;
         write(1, &negWrite, 2);
     }
+}
+
+// Read funcs 
+int read_polarity() 
+{
+    int polarity = 0;
+    short previous_sample = 0;
+    short current_sample = 0;
+
+    char sample_window[POLARITY_SYNC_CHECK_WINDOW + 1] = "";
+    int window_pos = 0;
+    int sample_len = 0;
+
+    char pattern_to_check[POLARITY_SYNC_PATTERN_NUM_POS + POLARITY_SYNC_PATTERN_NUM_NEG + 1] = "";
+
+    int num_matches_found = 0;
+
+    while(fread(&current_sample, 2, 1, stdin) == 1 && polarity == 0)
+    {
+        // A positive number * a negative number will always be negative. 
+        bool crossed_zero = ((previous_sample * current_sample) < 0);
+        sample_len++; 
+
+        if(crossed_zero) 
+        {
+            // Is this a positive or negative sample? 
+            for(int i = 0; i < sample_len / PCM_SAMPLES_PER_BIT; i++)
+            {
+                if(current_sample > 0) 
+                {
+                    sample_window[window_pos] = 'p';
+                }
+                else
+                {
+                    sample_window[window_pos] = 'n';
+                }
+                window_pos++;
+                window_pos = window_pos % POLARITY_SYNC_CHECK_WINDOW;
+            }
+            //printf("%s\n", sample_window);
+            
+            // If we're at the border of one bit window, check and see 
+            // if we have matched our pattern the requisite number of times.
+            if(sample_len / PCM_SAMPLES_PER_BIT > 0) 
+            {
+               // Check for normal pattern.
+               num_matches_found = 0;
+               int pattern_index = 0; 
+               int chrmatch = 0;
+               for(int i = 0; i < POLARITY_SYNC_PATTERN_NUM_NEG; i++)
+               {
+                   pattern_to_check[i] = 'n';
+               }
+               for(int i = POLARITY_SYNC_PATTERN_NUM_NEG; i < POLARITY_SYNC_PATTERN_NUM_NEG + POLARITY_SYNC_PATTERN_NUM_POS; i++)
+               {
+                   pattern_to_check[i] = 'p';
+               }
+
+               for(int window_chr = 0; window_chr < POLARITY_SYNC_CHECK_WINDOW;)
+               {
+                   pattern_index = 0;
+                   chrmatch = 0;
+                   while((sample_window[window_chr] == pattern_to_check[pattern_index]))
+                   {
+                        chrmatch++;
+                        window_chr++;
+                        pattern_index++;
+                   }
+                   if(chrmatch == POLARITY_SYNC_PATTERN_NUM_NEG + POLARITY_SYNC_PATTERN_NUM_POS)
+                   {
+                        num_matches_found++;
+                        chrmatch = 0;
+                   }
+                   else 
+                   {
+                        window_chr++;
+                   }
+               }
+
+               
+               if(num_matches_found >= POLARITY_SYNC_DESIRED_COUNT)
+               {
+                   polarity = 1;
+                   break;
+               }
+
+
+               // Check for inverted pattern.
+               num_matches_found = 0;
+               pattern_index = 0; 
+               chrmatch = 0;
+               for(int i = 0; i < POLARITY_SYNC_PATTERN_NUM_NEG; i++)
+               {
+                   pattern_to_check[i] = 'p';
+               }
+               for(int i = POLARITY_SYNC_PATTERN_NUM_NEG; i < POLARITY_SYNC_PATTERN_NUM_NEG + POLARITY_SYNC_PATTERN_NUM_POS; i++)
+               {
+                   pattern_to_check[i] = 'n';
+               }
+
+               for(int window_chr = 0; window_chr < POLARITY_SYNC_CHECK_WINDOW;)
+               {
+                   pattern_index = 0;
+                   chrmatch = 0;
+                   while((sample_window[window_chr] == pattern_to_check[pattern_index]))
+                   {
+                        chrmatch++;
+                        window_chr++;
+                        pattern_index++;
+                   }
+                   if(chrmatch == POLARITY_SYNC_PATTERN_NUM_NEG + POLARITY_SYNC_PATTERN_NUM_POS)
+                   {
+                        num_matches_found++;
+                        chrmatch = 0;
+                   }
+                   else 
+                   {
+                        window_chr++;
+                   }
+               }
+               if(num_matches_found >= POLARITY_SYNC_DESIRED_COUNT)
+               {
+                   polarity = -1;
+                   break;
+               }
+            }
+
+
+            sample_len = 0;
+
+
+        }
+        
+        previous_sample = current_sample;
+    }
+
+    return polarity;
+}
+
+void read_bit(int bit) 
+{
+    // A bit just came in, 0 or 1. 
+    // Shunt it on to the register, and keep it in the 1024 range. 
+    // This lets us read the bit register as a short.
+    bit_register = ((bit_register << 1) & 0x3FF) | (bit);
+    printf("%#04x\n", bit_register);
+    printf("%#02x\n", ((bit_register >> 1) & 0xFF));
+    
+    // We need to determine a few things here. 
+    if(!is_bit_sync) 
+    {
+        // If the topmost bit of the bit_register is 1, and the bottom bit is 0,
+        // then we have captured a byte and we have what is called "bit sync". 
+        // This is because of the way we wrapped our bytes. 
+        // Our lead-in of 0xFF helps us latch onto this before reading the header.
+        if((bit_register >> 9 > 0) && ((bit_register & 1) == 0))
+        {
+             is_bit_sync = true;
+             bit_per_byte_count = 0; // Ready for next byte 
+        }
+        else
+        {
+             header_register = 0; // Reset header. 
+        }
+    }
+    else 
+    {
+        // Currently reading a new byte. 
+        bit_per_byte_count++;
+        if(bit_per_byte_count == 10)
+        {
+            // A count of 10 means we've read a full byte of bits plus wrap bits.
+            bit_per_byte_count = 0; // Reset. 
+
+            // However, if it doesn't look like a byte, we've hit a snag and have lost synchronization. We'll need to skip to the next byte and reset our sync. 
+            // Note: This drops the connection entirely as it dumps the header. Commenting this out should allow resumption of stream with corruption.
+            if (!((bit_register >> 9 > 0) && ((bit_register & 1) == 0)))
+            {
+                is_bit_sync = 0;
+                //header_register = 0;
+                //is_header_accepted = 0;
+            }
+            else if(is_header_accepted) 
+            {
+                // If the header was previously accepted, we can send the current byte to STDOUT. 
+                int nextByte = ((bit_register >> 1) & 0xFF);
+                write(1, &nextByte, 1);
+            }
+            else 
+            {
+                // If we have a full byte, but haven't accepted the header yet,
+                // push the current byte on to the header register and check for our header!
+                int nextByte = ((bit_register >> 1) & 0xFF);
+                header_register = ((header_register << 8) | nextByte) & 0xFFFFFFFF;
+                printf("-----------------%#02x----%#08x\n", nextByte, header_register);
+                // If header register matches header... we did it! Sync complete.
+                if(header_register == 0x04200609) 
+                {
+                    is_header_accepted = 1;
+                }
+            }
+        }
+    }  
 }
