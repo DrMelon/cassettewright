@@ -63,6 +63,18 @@ int main(int argc, const char **argv)
         }
         else if (readmode)
         {
+                // Rough steps: 
+                // 1. Begin reading stdin in steps of 2 (to get 16-bit ints) 
+                // 2. Evaluate if currrent int is positive or negative 
+                // 3. Create rolling buffer of positive and negative readings for polarity sync
+                //    a. Polarity sync buffer matches need to be counted *within current search window*.
+                //    b. Search window is over pos/neg cycles of a fixed length. 
+                //    c. Once threshold number of sync buffer matches met, we now know we're synced up. Record the polarity.
+                // 4. When sync is achieved, we know the step and offset to start reading bytes 
+                // 5. Start consuming stdin packets and building up whole bytes, inverting if polarity is inverted
+                //    a. Remember! Need to read zero-crossings; if the current sample and previous sample's sign don't match, it happened.
+                // 6. Read lead-in and header - evaluate buffer until header match acquired.
+                // 7. Once header match acquired, we can safely read whole bytes out to stdout. 
         }
         else if (documode) 
         {
