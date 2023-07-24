@@ -17,6 +17,7 @@ static const char *const usages[] =
         NULL,
 };
 
+        int verbose = 0;
 int main(int argc, const char **argv)
 {
         int writemode = 0;
@@ -30,6 +31,7 @@ int main(int argc, const char **argv)
             OPT_BOOLEAN('w', "write", &writemode, "write data to tape format", NULL, 0, 0),
             OPT_BOOLEAN('r', "read", &readmode, "read data from tape format", NULL, 0, 0),
             OPT_BOOLEAN('d', "documentation", &documode, "print documentation about the format", NULL, 0, 0),
+            OPT_BOOLEAN('v', "verbose", &verbose, "write information to stderr"),
             OPT_END()
         };
 
@@ -116,10 +118,10 @@ int main(int argc, const char **argv)
                 printf("\n\tBits: 1 expressed as 2 positive cycles, 2 negative cycles.");
                 printf("\n\t      0 expressed as 1 positice cycle, 1 negative cycle.");
                 printf("\n\tBytes: Preceded by a 1 bit, followed by a 0 bit.");
-                printf("\n\tPolarity Sync Pattern: 200 repeats of positive-negative-negative-negative cycles.");
+                printf("\n\tPolarity Sync Pattern: 800 repeats of positive-negative-negative-negative cycles.");
                 printf("\n\tHeader:");
-                printf("\n\t* Lead-in; 16 bytes of 0xFF");
-                printf("\n\t* Header; 0x0A 0x0C 0x0A 0x0B 0x06 0x09");
+                printf("\n\t* Lead-in; 64 bytes of 0xFF");
+                printf("\n\t* Header; 0x04 0x20 0x06 0x09");
                 printf("\n");
         }
         else
@@ -213,8 +215,11 @@ int read_polarity()
 
     int num_matches_found = 0;
 
+    int total_read = 0;
+
     while(fread(&current_sample, 2, 1, stdin) == 1 && polarity == 0)
     {
+        total_read++;
         // A positive number * a negative number will always be negative. 
         bool crossed_zero = ((previous_sample * current_sample) < 0);
         sample_len++; 
@@ -278,6 +283,10 @@ int read_polarity()
                
                if(num_matches_found >= POLARITY_SYNC_DESIRED_COUNT)
                {
+                   if(verbose) 
+                   {
+                        fprintf(stderr, "Discovered positive polarity at index %d.\n", total_read);
+                   }
                    polarity = 1;
                    break;
                }
@@ -318,6 +327,10 @@ int read_polarity()
                }
                if(num_matches_found >= POLARITY_SYNC_DESIRED_COUNT)
                {
+                   if(verbose) 
+                   {
+                           fprintf(stderr, "Discovered negative polarity at index %d.\n", total_read);
+                   }
                    polarity = -1;
                    break;
                }
@@ -332,11 +345,16 @@ int read_polarity()
         previous_sample = current_sample;
     }
 
+    if(polarity == 0 && verbose) 
+    {
+        fprintf(stderr, "Failed to acquire polarity lock.\n");
+    }
     return polarity;
 }
-
+int total_bit_count = 0;
 void read_bit(int bit) 
 {
+    total_bit_count++;
     // A bit just came in, 0 or 1.
     // Shunt it on to the register, and keep it in the 1024 range. 
     // This lets us read the bit register as a short.
@@ -353,6 +371,10 @@ void read_bit(int bit)
         {
              is_bit_sync = true;
              bit_per_byte_count = 0; // Ready for next byte 
+             if(verbose) 
+             {
+                  fprintf(stderr, "Found bit sync at %d\n", total_bit_count);
+             }
         }
         else
         {
@@ -375,6 +397,10 @@ void read_bit(int bit)
                 is_bit_sync = 0;
                 //header_register = 0;
                 //is_header_accepted = 0;
+                if(verbose) 
+                {
+                    fprintf(stderr, "Lost bit sync at %d\n", total_bit_count);
+                }
             }
             else if(is_header_accepted) 
             {
@@ -392,6 +418,10 @@ void read_bit(int bit)
                 if(header_register == 0x04200609) 
                 {
                     is_header_accepted = 1;
+                    if(verbose) 
+                    {
+                        fprintf(stderr, "Got header lock at bit %d\n", total_bit_count);
+                    }
                 }
             }
         }
