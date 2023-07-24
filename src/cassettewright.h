@@ -20,7 +20,7 @@ int bit_per_byte_count = 0;
 int header_register = 0;
 
 
-#define PCM_SAMPLES_PER_BIT 16
+#define PCM_SAMPLES_PER_BIT 8
 #define POLARITY_SYNC_PATTERN_NUM_POS 1
 #define POLARITY_SYNC_PATTERN_NUM_NEG 3
 #define POLARITY_SYNC_DESIRED_COUNT 10
