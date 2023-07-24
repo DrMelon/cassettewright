@@ -103,11 +103,20 @@ int main(int argc, const char **argv)
                     current_sample *= polarity;
                     current_length += 1;
 
+                    if(current_sample > 0) 
+                    {
+                        current_sample = 100;
+                    }
+                    if(current_sample <= 0) 
+                    {
+                        current_sample = -100;
+                    }
+
                     // Is this a zero-crossing *at the point of positive-to-negative change*? 
                     // Note: we need some tolerances for a bad zero crossing;
                     // that is, if the zero crossing happens, but we haven't yet exceeded some count, 
                     // ignore it and *keep counting*.
-                    if(previous_sample > 0 && current_sample <= 0)
+                    if(previous_sample > 0 && current_sample < 0)
                     {
                         // Remember: 1s are 2 cycles long of pos + neg, 0s are 1 cycle long of pos + neg.
                         // That means the sample windows are PCM_SAMPLES_PER_BIT * 4 and PCM_SAMPLES_PER_BIT * 2. 
@@ -125,7 +134,7 @@ int main(int argc, const char **argv)
         {
                 printf("\nCassettewright Format Information");
                 printf("\nExpressed as Signed 16-bit PCM (Endianness Machine-Dependent)");
-                printf("\nCycle: 16 PCM samples.");
+                printf("\nCycle: 8 PCM samples.");
                 printf("\n\tBits: 1 expressed as 2 positive cycles, 2 negative cycles.");
                 printf("\n\t      0 expressed as 1 positice cycle, 1 negative cycle.");
                 printf("\n\tBytes: Preceded by a 1 bit, followed by a 0 bit.");
