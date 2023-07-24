@@ -100,10 +100,16 @@ int main(int argc, const char **argv)
                     // Is this a zero-crossing *at the point of positive-to-negative change*? 
                     if(previous_sample > 0 && current_sample <= 0)  
                     {
-                        // Remember: 1s are 2 cycles long, 0s are 1 cycle long.
-                        int bit_is_one = (current_length > PCM_SAMPLES_PER_BIT * 2);
-                        read_bit(bit_is_one);
-                        current_length = 0;
+                        // Remember: 1s are 2 cycles long of pos + neg, 0s are 1 cycle long of pos + neg.
+                        // That means the sample windows are PCM_SAMPLES_PER_BIT * 4 and PCM_SAMPLES_PER_BIT * 2. 
+                        // Due to analog noise, we can only guarantee that bits are 1s if they exceed PCM_SAMPLES_PER_BIT * 3 - to give leeway of tape echo/signal jitter from 2-length 0s. 
+                        int bit_is_one = (current_length > PCM_SAMPLES_PER_BIT * 3);
+                        int bit_is_noisy = (current_length < (PCM_SAMPLES_PER_BIT + (PCM_SAMPLES_PER_BIT / 2))); // Minimum length; ensures that noise that flips negatives is not registered. 
+                        if(!bit_is_noisy) 
+                        {
+                                read_bit(bit_is_one);
+                                current_length = 0;
+                        }
                     }
 
                     previous_sample = current_sample;
