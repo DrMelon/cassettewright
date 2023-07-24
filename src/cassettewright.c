@@ -93,10 +93,13 @@ int main(int argc, const char **argv)
                 header_register = 0;
                 is_bit_sync = 0;
                 bit_register = 0;
+                int total_read = 0;
 
                 // Read samples in 2 bytes at a time.
                 while(fread(&current_sample, 2, 1, stdin) == 1) 
                 {
+                    total_read++;
+                    current_sample = current_sample >> 1; // Shift down so that we don't blow out two's complement with an invert.
                     current_sample *= polarity;
                     current_length += 1;
 
@@ -104,7 +107,7 @@ int main(int argc, const char **argv)
                     // Note: we need some tolerances for a bad zero crossing;
                     // that is, if the zero crossing happens, but we haven't yet exceeded some count, 
                     // ignore it and *keep counting*.
-                    if(previous_sample > 0 && current_sample <= 0 && current_length > PCM_SAMPLES_PER_BIT)  
+                    if(previous_sample > 0 && current_sample <= 0)
                     {
                         // Remember: 1s are 2 cycles long of pos + neg, 0s are 1 cycle long of pos + neg.
                         // That means the sample windows are PCM_SAMPLES_PER_BIT * 4 and PCM_SAMPLES_PER_BIT * 2. 
@@ -371,7 +374,7 @@ void read_bit(int bit)
     // A bit just came in, 0 or 1.
     // Shunt it on to the register, and keep it in the 1024 range. 
     // This lets us read the bit register as a short.
-    bit_register = ((bit_register << 1) | (bit)) & 0x3FF;
+    bit_register = (((bit_register << 1) & 0x3FF) | (bit));
     
     // We need to determine a few things here. 
     if(!is_bit_sync) 
