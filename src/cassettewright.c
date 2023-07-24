@@ -39,7 +39,7 @@ int main(int argc, const char **argv)
 
         struct argparse argparse;
         argparse_init(&argparse, options, usages, 0);
-        argparse_describe(&argparse, "\nConvert data to and from the Cassettewright format over STDIN and STDOUT.", "\nWrite mode will take data from STDIN and convert it to the Cassettewright tape format, as signed 16-bit PCM over STDOUT.\nRead mode will take signed 16-bit PCM Cassettewright tape format data from STDIN and convert it to plain bytes for output over STDOUT.");
+        argparse_describe(&argparse, "\nConvert data to and from the Cassettewright format over STDIN and STDOUT.", "\nWrite mode will take data from STDIN and convert it to the Cassettewright tape format, as signed 16-bit PCM over STDOUT.\nRead mode will take signed 16-bit PCM Cassettewright tape format data from STDIN and convert it to plain bytes for output over STDOUT.\n\nNote: For good results from real cassette tapes, record at about 70-75% volume, and play back from tape loud enough to clip during output.");
         argc = argparse_parse(&argparse, argc, argv);
 
 
