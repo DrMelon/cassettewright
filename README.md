@@ -3,7 +3,7 @@
 **WARNING: The audio this program generates is extremely loud. Write to file and open in something like Audacity where you can control the volume if you want to listen to it.**  
 
 ## Example Video 
-* [Check It Out]()
+* [Check It Out](https://youtu.be/0O2jbT4veNA)
 
 
 ## Requirements
