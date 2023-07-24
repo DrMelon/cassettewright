@@ -18,6 +18,7 @@ static const char *const usages[] =
 };
 
         int verbose = 0;
+        int examine = 0;
 int main(int argc, const char **argv)
 {
         int writemode = 0;
@@ -32,6 +33,7 @@ int main(int argc, const char **argv)
             OPT_BOOLEAN('r', "read", &readmode, "read data from tape format", NULL, 0, 0),
             OPT_BOOLEAN('d', "documentation", &documode, "print documentation about the format", NULL, 0, 0),
             OPT_BOOLEAN('v', "verbose", &verbose, "write information to stderr"),
+            OPT_BOOLEAN('x', "examine-bitstream", &examine, "writes bitstream to stderr for diagnosing signal loss"),
             OPT_END()
         };
 
@@ -39,6 +41,7 @@ int main(int argc, const char **argv)
         argparse_init(&argparse, options, usages, 0);
         argparse_describe(&argparse, "\nConvert data to and from the Cassettewright format over STDIN and STDOUT.", "\nWrite mode will take data from STDIN and convert it to the Cassettewright tape format, as signed 16-bit PCM over STDOUT.\nRead mode will take signed 16-bit PCM Cassettewright tape format data from STDIN and convert it to plain bytes for output over STDOUT.");
         argc = argparse_parse(&argparse, argc, argv);
+
 
         if (writemode) 
         {
@@ -98,18 +101,17 @@ int main(int argc, const char **argv)
                     current_length += 1;
 
                     // Is this a zero-crossing *at the point of positive-to-negative change*? 
-                    if(previous_sample > 0 && current_sample <= 0)  
+                    // Note: we need some tolerances for a bad zero crossing;
+                    // that is, if the zero crossing happens, but we haven't yet exceeded some count, 
+                    // ignore it and *keep counting*.
+                    if(previous_sample > 0 && current_sample <= 0 && current_length > PCM_SAMPLES_PER_BIT)  
                     {
                         // Remember: 1s are 2 cycles long of pos + neg, 0s are 1 cycle long of pos + neg.
                         // That means the sample windows are PCM_SAMPLES_PER_BIT * 4 and PCM_SAMPLES_PER_BIT * 2. 
                         // Due to analog noise, we can only guarantee that bits are 1s if they exceed PCM_SAMPLES_PER_BIT * 3 - to give leeway of tape echo/signal jitter from 2-length 0s. 
                         int bit_is_one = (current_length > PCM_SAMPLES_PER_BIT * 3);
-                        int bit_is_noisy = (current_length < (PCM_SAMPLES_PER_BIT + (PCM_SAMPLES_PER_BIT / 2))); // Minimum length; ensures that noise that flips negatives is not registered. 
-                        if(!bit_is_noisy) 
-                        {
-                                read_bit(bit_is_one);
-                                current_length = 0;
-                        }
+                        read_bit(bit_is_one);
+                        current_length = 0;
                     }
 
                     previous_sample = current_sample;
@@ -233,7 +235,7 @@ int read_polarity()
         if(crossed_zero) 
         {
             // Is this a positive or negative sample? 
-            for(int i = 0; i < sample_len / PCM_SAMPLES_PER_BIT; i++)
+            for(int i = 0; i < sample_len / (PCM_SAMPLES_PER_BIT-1); i++)
             {
                 if(current_sample > 0) 
                 {
@@ -250,7 +252,7 @@ int read_polarity()
             
             // If we're at the border of one bit window, check and see 
             // if we have matched our pattern the requisite number of times.
-            if(sample_len / PCM_SAMPLES_PER_BIT > 0) 
+            if(sample_len / (PCM_SAMPLES_PER_BIT-1) > 0) 
             {
                // Check for normal pattern.
                num_matches_found = 0;
@@ -360,6 +362,11 @@ int read_polarity()
 int total_bit_count = 0;
 void read_bit(int bit) 
 {
+    if(examine) 
+    {
+        fprintf(stderr, "%d", bit);
+    }
+
     total_bit_count++;
     // A bit just came in, 0 or 1.
     // Shunt it on to the register, and keep it in the 1024 range. 
